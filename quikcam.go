@@ -1,48 +1,46 @@
 package main
 
 import (
-	"log"
-	"os"
+	"flag"
+	"fmt"
+	"os/exec"
 
-	"golang.org/x/sys/unix"
-	//"github.com/blackjack/webcam/ioctl"
+	"github.com/robmerrell/comandante"
 )
 
-// Open webcam device
-func newCam(path string) (*Webcam, error) {
-	dev, err := os.OpenFile(path, unix.O_RDWR|unix.O_NONBLOCK, 0)
-	fd := dev.Fd()
-	if err != nil || fd < 0 {
-		log.Fatal("There was an error opening the device: %s", err)
-		return nil, err
-	}
-	cam := new(Webcam)
-	cam.devpath = dev
-	cam.fd = fd
-	return cam, nil
-	//buff := make([][]byte, dev)
+var (
+	savepath string
+)
 
-}
-func (w *Webcam) GrabFrame() error {
+func snapJpg(savepath string) error {
+	cmd := exec.Command("dd", "if=/dev/video0", "of="+savepath, "bs=1M", "count=1")
+	fmt.Println("saving jpeg to ", savepath)
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println("There was an error saving jpg", err)
+		return err
+	}
 	return nil
 }
-
-type Cam interface {
-	GrabFrame() error
-}
-type Webcam struct {
-	devpath *os.File
-	fd      uintptr
-	buffers [][]byte
-}
-
-func main() {
-	var path = "/dev/video0"
-	webcam, err := newCam(path)
+func Snap() error {
+	err := snapJpg(savepath)
 	if err != nil {
-		log.Println("There was an error instantiating webcam: %s", err)
+		return err
 	}
-	stub := webcam.GrabFrame()
-	log.Println(stub)
-	os.Exit(0)
+	return nil
+}
+func main() {
+	bin := comandante.New("quikcam", "A command-line webcam utility.")
+	bin.IncludeHelp()
+	snapshot := comandante.NewCommand("snapshot", "snap a single jpg image", Snap)
+	snapshot.Documentation = `
+	snapshot takes a single webcam image snapshot in jpg format
+	`
+	snapshot.FlagInit = func(fs *flag.FlagSet) {
+		fs.StringVar(&savepath, "o", "~/pic.jpg", "output path (default is ~/pic.jpg")
+	}
+	bin.RegisterCommand(snapshot)
+	if err := bin.Run(); err != nil {
+		panic(err)
+	}
 }
